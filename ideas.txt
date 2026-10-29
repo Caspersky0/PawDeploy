@@ -1,0 +1,3 @@
+Well first of all we have think of a idea to build so lets be honest here
+
+PAWDEPLOY - deployment app, still do not know how it works but it should work somehow
