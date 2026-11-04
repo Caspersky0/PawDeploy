@@ -1,3 +1,4 @@
+import random
 
 import customtkinter as ctk
 
@@ -10,6 +11,7 @@ MUTED_COLOR = "#9CA3AF"
 ACCENT_COLOR = "#22C55E"
 ACCENT_HOVER = "#16A34A"
 ERROR_COLOR = "#F87171"
+WARNING_COLOR = "#FACC15"
 
 
 # ---------- MAIN WINDOW ----------
@@ -215,10 +217,16 @@ for stage in STAGES:
 
     stage_dots.append(dot)
 
+def finish(message, color):
+    app_output.configure(text=message, text_color=color)
+    run_button.configure(state="normal")
+
 # ---------- RUN PIPELINE ----------
-FAIL_AT = 2   # 0 = Build, 1 = Test, 2 = Security Scan, 3 = Deploy
 
 def run_pipeline():
+    fail_at = random.randint(0, len(STAGES) + 2)   # 0 = Build, 1 = Test, 2 = Security Scan, 3 = Deploy
+
+
     app_name = app_entry.get().strip()
     if not app_name:
         app_output.configure(
@@ -226,6 +234,9 @@ def run_pipeline():
             text_color=ERROR_COLOR
         )
         return
+    run_button.configure(state="disabled")
+    for dot in stage_dots:
+        dot.configure(text="○", text_color=TEXT_COLOR)
     app_output.configure(
         text=f"Deploying {app_name}...",
         text_color=ACCENT_COLOR
@@ -233,17 +244,19 @@ def run_pipeline():
     second = 1000
     for i, dot in enumerate(stage_dots):
         delay = (i + 1) * second
-        if i == FAIL_AT:
+        start = i * second
+        root.after(
+            start,
+            lambda d=dot: d.configure(text="●", text_color=WARNING_COLOR)
+        )
+        if i == fail_at:
             root.after(
                 delay,
                 lambda d=dot: d.configure(text="✕", text_color=ERROR_COLOR)
             )
             root.after(
                 delay,
-                lambda: app_output.configure(
-                    text=f"{app_name} failed at {STAGES[FAIL_AT]}",
-                    text_color=ERROR_COLOR
-                )
+                lambda: finish(f"{app_name}, failed at {STAGES[fail_at]}", ERROR_COLOR)
             )
             return
         root.after(
@@ -252,10 +265,7 @@ def run_pipeline():
         )
     root.after(
         len(stage_dots) * second + second,
-        lambda: app_output.configure(
-            text=f"{app_name} deployed",
-            text_color=ACCENT_COLOR
-        )
+        lambda: finish(f"{app_name} deployed", ACCENT_COLOR)
     )
         
 
@@ -277,5 +287,7 @@ def clear_error(event):
         app_output.configure(text="")
 
 app_entry.bind("<KeyRelease>", clear_error)
+
+
 
 root.mainloop()
