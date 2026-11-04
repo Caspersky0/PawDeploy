@@ -1,4 +1,5 @@
 import random
+from datetime import datetime
 
 import customtkinter as ctk
 
@@ -20,8 +21,8 @@ ctk.set_default_color_theme("green")
 
 root = ctk.CTk()
 root.title("PawDeploy")
-root.geometry("1000x800")
-root.minsize(1000, 800)
+root.geometry("1100x800")
+root.minsize(1100, 800)
 root.configure(fg_color=BG_COLOR)
 
 
@@ -42,11 +43,12 @@ content_frame = ctk.CTkFrame(
     main_frame,
     fg_color="transparent"
 )
-content_frame.place(
-    relx=0.5,
-    rely=0.5,
-    anchor="center"
-)
+main_frame.grid_columnconfigure(0, weight=1)   # left column takes all the extra space
+main_frame.grid_columnconfigure(1, weight=1)   # right column keeps its own size
+main_frame.grid_rowconfigure(0, weight=1)
+
+content_frame.grid(row=0, column=0, padx=(0, 20), sticky="e")
+
 
 
 # ---------- HEADER ----------
@@ -148,11 +150,13 @@ def app_check():
             text="Please enter an application name!",
             text_color=ERROR_COLOR
         )
+        add_log("ERROR: No application was entered. Enter application name")
     else:
         app_output.configure(
             text=f"Application: {app_input}",
             text_color=ACCENT_COLOR
         )
+        add_log(f"INFO: Application {app_input} was entered. Check successful")
 
     app_output.pack(pady=(10, 10), before=app_check_app)
 
@@ -218,6 +222,7 @@ for stage in STAGES:
     stage_dots.append(dot)
 
 def finish(message, color):
+    add_log(message)
     app_output.configure(text=message, text_color=color)
     run_button.configure(state="normal")
 
@@ -241,31 +246,55 @@ def run_pipeline():
         text=f"Deploying {app_name}...",
         text_color=ACCENT_COLOR
     )
+
     second = 1000
+
+    add_log(f"INFO: Pipeline started for {app_name}")
+
     for i, dot in enumerate(stage_dots):
         delay = (i + 1) * second
         start = i * second
+
+        # stage starts: yellow dot + log line
         root.after(
             start,
             lambda d=dot: d.configure(text="●", text_color=WARNING_COLOR)
         )
+        root.after(
+            start,
+            lambda n=STAGES[i]: add_log(f"INFO: {n} started")
+        )
+
         if i == fail_at:
+            # stage fails: red dot + log line + final message
             root.after(
                 delay,
                 lambda d=dot: d.configure(text="✕", text_color=ERROR_COLOR)
             )
             root.after(
                 delay,
+                lambda n=STAGES[i]: add_log(f"ERROR: {n} failed")
+            )
+            root.after(
+                delay,
                 lambda: finish(f"{app_name}, failed at {STAGES[fail_at]}", ERROR_COLOR)
             )
             return
+
+        # stage passes: green dot + log line
         root.after(
             delay,
             lambda d=dot: d.configure(text="●", text_color=ACCENT_COLOR)
         )
+        root.after(
+            delay,
+            lambda n=STAGES[i]: add_log(f"INFO: {n} passed")
+        )
+
+    # all stages passed
     root.after(
         len(stage_dots) * second + second,
-        lambda: finish(f"{app_name} deployed", ACCENT_COLOR)
+        lambda: finish(f"Application {app_name} deployment was successful", ACCENT_COLOR)
     )
         
 
@@ -288,6 +317,44 @@ def clear_error(event):
 
 app_entry.bind("<KeyRelease>", clear_error)
 
+# ---------- LOG TERMINAL ----------
+TERMINAL_BG = "#0B0F14"
+
+log_frame = ctk.CTkFrame(
+    main_frame,
+    fg_color=TERMINAL_BG,
+    corner_radius=12,
+    border_width=1,
+    border_color="#374151",
+)
+log_frame.grid(row=0, column=1, padx=(10, 0), sticky="w")
+
+log_title = ctk.CTkLabel(
+    log_frame,
+    text="● ● ●   pawdeploy.log",
+    font=("Menlo", 11),
+    text_color=MUTED_COLOR
+)
+log_title.pack(anchor="w", padx=14, pady=(10,6))
+
+log_box = ctk.CTkTextbox(
+    log_frame,
+    width=320,
+    height=420,
+    fg_color=TERMINAL_BG,
+    text_color=ACCENT_COLOR,
+    font=("Menlo", 12),
+    wrap="word",
+    state="disabled"
+)
+log_box.pack(padx=12, pady=(0, 12))
+
+def add_log(text):
+    stamp = datetime.now().strftime("%H:%M:%S")
+    log_box.configure(state="normal")
+    log_box.insert("end", f"[{stamp}] {text}\n")
+    log_box.see("end")
+    log_box.configure(state="disabled")
 
 
 root.mainloop()
