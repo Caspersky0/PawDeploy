@@ -1,18 +1,27 @@
-import random
+import random  # noqa: I001
+import sys
+
 from datetime import datetime
+from pathlib import Path
+from tkinter import filedialog
 
 import customtkinter as ctk
+
+import pipeline
+import security_scan
+
+
 
 # ---------- COLORS ----------
 BG_COLOR = "#111827"
 PANEL_COLOR = "#1F2937"
-INPUT_COLOR = "#111827"
 TEXT_COLOR = "#F3F4F6"
 MUTED_COLOR = "#9CA3AF"
 ACCENT_COLOR = "#22C55E"
 ACCENT_HOVER = "#16A34A"
 ERROR_COLOR = "#F87171"
 WARNING_COLOR = "#FACC15"
+TERMINAL_BG = "#0B0F14"
 
 
 # ---------- MAIN WINDOW ----------
@@ -43,12 +52,11 @@ content_frame = ctk.CTkFrame(
     main_frame,
     fg_color="transparent"
 )
-main_frame.grid_columnconfigure(0, weight=1)   # left column takes all the extra space
-main_frame.grid_columnconfigure(1, weight=1)   # right column keeps its own size
+main_frame.grid_columnconfigure(0, weight=1)
+main_frame.grid_columnconfigure(1, weight=1)
 main_frame.grid_rowconfigure(0, weight=1)
 
 content_frame.grid(row=0, column=0, padx=(0, 20), sticky="e")
-
 
 
 # ---------- HEADER ----------
@@ -58,7 +66,6 @@ header_frame = ctk.CTkFrame(
     corner_radius=20
 )
 header_frame.pack(fill="x", pady=(0, 20))
-
 
 welcome_label = ctk.CTkLabel(
     header_frame,
@@ -95,91 +102,58 @@ app_title.pack(pady=(28, 5))
 
 app_description = ctk.CTkLabel(
     app_frame,
-    text="Enter the name of the application you want to deploy.",
+    text="Choose the Python file you want to deploy.",
     font=("Arial", 12),
     text_color=MUTED_COLOR
 )
 app_description.pack(pady=(0, 20))
 
 
-# ---------- APPLICATION INPUT ----------
-app_label = ctk.CTkLabel(
-    app_frame,
-    text="Application name",
-    font=("Arial", 12, "bold"),
-    text_color=TEXT_COLOR
-)
-app_label.pack(pady=(0, 8))
-
-app_entry = ctk.CTkEntry(
-    app_frame,
-    width=400,
-    height=40,
-    font=("Arial", 14),
-    fg_color=INPUT_COLOR,
-    text_color=TEXT_COLOR,
-    placeholder_text="e.g. PawDeploy",
-    placeholder_text_color=MUTED_COLOR,
-    border_color="#374151",
-    border_width=1,
-    corner_radius=10
-)
-app_entry.pack()
-MAX_LENGTH = 30
-app_entry.bind("<KeyRelease>", lambda event: app_entry.delete(MAX_LENGTH, "end"))
-
-# ---------- OUTPUT ----------
-app_output = ctk.CTkLabel(
-    app_frame,
-    text="",
-    font=("Arial", 16, "bold"),
-    text_color=TEXT_COLOR,
-    width=400,
-    height=30,
-    wraplength=400
-)
-app_output.pack(pady=(16,0))
+# ---------- FILE PICKER ----------
+selected_file = ""
 
 
-# ---------- APPLICATION CHECK ----------
-def app_check():
-    app_input = app_entry.get().strip()
-
-    if not app_input:
+def choose_file():
+    global selected_file
+    path = filedialog.askopenfilename(filetypes=[("Python files", "*.py")])
+    if path:
+        selected_file = path
+        name = Path(path).name
         app_output.configure(
-            text="Please enter an application name!",
-            text_color=ERROR_COLOR
-        )
-        add_log("ERROR: No application was entered. Enter application name")
-    else:
-        app_output.configure(
-            text=f"Application: {app_input}",
+            text=f"Application: {name}",
             text_color=ACCENT_COLOR
         )
-        add_log(f"INFO: Application {app_input} was entered. Check successful")
-
-    app_output.pack(pady=(10, 10), before=app_check_app)
+        add_log(f"INFO: Selected application {name}")
 
 
-# ---------- CHECK BUTTON ----------
-app_check_app = ctk.CTkButton(
+file_button = ctk.CTkButton(
     app_frame,
-    text="Check Application",
+    text="Choose .py file",
     fg_color=ACCENT_COLOR,
     hover_color=ACCENT_HOVER,
     text_color="#052E16",
     font=("Arial", 13, "bold"),
     corner_radius=10,
     height=40,
-    command=app_check
+    command=choose_file
 )
-app_check_app.pack(pady=(10, 10))
+file_button.pack()
 
 
-# ---------- KEYBOARD BINDING ----------
-app_entry.bind("<Return>", lambda event: app_check())
+# ---------- OUTPUT ----------
+app_output = ctk.CTkLabel(
+    app_frame,
+    text="No file selected",
+    font=("Arial", 16, "bold"),
+    text_color=MUTED_COLOR,
+    width=440,
+    height=30,
+    wraplength=420
+)
+app_output.pack(pady=(16, 28))
 
-# ---------- DEPLAYMENT PIPELINE ----------
+
+# ---------- DEPLOYMENT PIPELINE ----------
 pipeline_frame = ctk.CTkFrame(
     content_frame,
     fg_color=PANEL_COLOR,
@@ -195,7 +169,6 @@ pipeline_title = ctk.CTkLabel(
 )
 pipeline_title.pack(pady=20)
 
-# ---------- DEPLOYMENT PIPELINE ----------
 STAGES = ["Build", "Test", "Security Scan", "Deploy"]
 stage_dots = []
 
@@ -221,25 +194,43 @@ for stage in STAGES:
 
     stage_dots.append(dot)
 
+
 def finish(message, color):
     add_log(message)
     app_output.configure(text=message, text_color=color)
     run_button.configure(state="normal")
 
+
 # ---------- RUN PIPELINE ----------
-
 def run_pipeline():
-    fail_at = random.randint(0, len(STAGES) + 2)   # 0 = Build, 1 = Test, 2 = Security Scan, 3 = Deploy
-
-
-    app_name = app_entry.get().strip()
-    if not app_name:
+    if not selected_file:
         app_output.configure(
-            text="There is no app, please enter your application",
+            text="Please choose a .py file first",
             text_color=ERROR_COLOR
         )
+        add_log("ERROR: No application selected. Choose a .py file first")
         return
+
+    app_name = Path(selected_file).name
+
+    # 0-3 = that stage crashes, anything bigger = no crash (rare crash for a real feel)
+    fail_at = random.randint(0, len(STAGES) * 5)
+
+    # real Build check: a broken file always fails at Build
+    build_error = pipeline.check_build(selected_file)
+    security_error = security_scan.check_security(selected_file)
+    reason = build_error or security_error or "unexpected crash"
+    if build_error or security_error:
+        fail_at = 0
+
     run_button.configure(state="disabled")
+
+    def finish(message, color):
+        add_log(message)
+        app_output.configure(text=message, text_color=color)
+        run_button.configure(state="normal")
+        file_button.configure(state="normal")
+
     for dot in stage_dots:
         dot.configure(text="○", text_color=TEXT_COLOR)
     app_output.configure(
@@ -273,11 +264,11 @@ def run_pipeline():
             )
             root.after(
                 delay,
-                lambda n=STAGES[i]: add_log(f"ERROR: {n} failed")
+                lambda n=STAGES[i]: add_log(f"ERROR: {n} failed ({reason})")
             )
             root.after(
                 delay,
-                lambda: finish(f"{app_name}, failed at {STAGES[fail_at]}", ERROR_COLOR)
+                lambda: finish(f"{app_name} failed at {STAGES[fail_at]}", ERROR_COLOR)
             )
             return
 
@@ -291,16 +282,31 @@ def run_pipeline():
             lambda n=STAGES[i]: add_log(f"INFO: {n} passed")
         )
 
-    # all stages passed
-    root.after(
-        len(stage_dots) * second + second,
-        lambda: finish(f"Application {app_name} deployment was successful", ACCENT_COLOR)
-    )
-        
+        # all stages passed
+    def deploy_now():
+            target = pipeline.deploy(selected_file)
+            add_log(f"INFO: Copied to {target}")
+            add_log("INFO: Building the app, this can take a minute...")
+            app_output.configure(text=f"Building {app_name}...", text_color=WARNING_COLOR)
+            process = pipeline.build_app(selected_file)
+
+            def wait_for_build():
+                if process.poll() is None:
+                    root.after(500, wait_for_build)
+                elif process.returncode == 0:
+                    finish(f"{app_name} deployed successfully", ACCENT_COLOR)
+                    add_log(f"INFO: App ready in {pipeline.DEPLOY_FOLDER}")
+                else:
+                    finish(f"{app_name} build failed", ERROR_COLOR)
+                    add_log("ERROR: See build_tmp/build.log for details")
+
+            wait_for_build()
+
+    root.after(len(stage_dots) * second + second, deploy_now)
 
 run_button = ctk.CTkButton(
     pipeline_frame,
-    text = "Run Pipeline",
+    text="Run Pipeline",
     fg_color=ACCENT_COLOR,
     hover_color=ACCENT_HOVER,
     text_color="#052E16",
@@ -311,21 +317,14 @@ run_button = ctk.CTkButton(
 )
 run_button.pack(pady=(10, 24))
 
-def clear_error(event):
-    if app_entry.get() and app_output.cget("text_color") == ERROR_COLOR:
-        app_output.configure(text="")
-
-app_entry.bind("<KeyRelease>", clear_error)
 
 # ---------- LOG TERMINAL ----------
-TERMINAL_BG = "#0B0F14"
-
 log_frame = ctk.CTkFrame(
     main_frame,
     fg_color=TERMINAL_BG,
     corner_radius=12,
     border_width=1,
-    border_color="#374151",
+    border_color="#374151"
 )
 log_frame.grid(row=0, column=1, padx=(10, 0), sticky="w")
 
@@ -335,7 +334,7 @@ log_title = ctk.CTkLabel(
     font=("Menlo", 11),
     text_color=MUTED_COLOR
 )
-log_title.pack(anchor="w", padx=14, pady=(10,6))
+log_title.pack(anchor="w", padx=14, pady=(10, 6))
 
 log_box = ctk.CTkTextbox(
     log_frame,
@@ -349,6 +348,7 @@ log_box = ctk.CTkTextbox(
 )
 log_box.pack(padx=12, pady=(0, 12))
 
+
 def add_log(text):
     stamp = datetime.now().strftime("%H:%M:%S")
     log_box.configure(state="normal")
@@ -357,4 +357,7 @@ def add_log(text):
     log_box.configure(state="disabled")
 
 
+add_log("INFO: PawDeploy ready. Choose a .py file to begin.")
+
 root.mainloop()
+
